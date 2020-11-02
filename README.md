@@ -9,6 +9,15 @@ Bolt also allows you to whitelist an IP address to be allowed to access a protec
 Developed by: [Libyan Spider](https://libyanspider.com)
 License:Apache License Version 2.0
 
+## Installation
+
+```
+cd ~
+wget https://github.com/shumbashi/bolt/releases/download/v1.0/bolt_v1.0_linux_amd64 -O bolt_v1.0_linux_amd64
+mv bolt_v1.0_linux_amd64 /usr/local/bin/bolt
+chmod +x /usr/local/bin/bolt
+```
+
 ## Usage
 
 ```
