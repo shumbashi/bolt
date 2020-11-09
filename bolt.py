@@ -8,6 +8,7 @@ import subprocess
 import random
 import string
 import socket
+import sys
 
 @click.group()
 @click.option('--debug/--no-debug', default=False, help="Enable verbose output")
@@ -77,7 +78,7 @@ class Site(object):
                 found_vhosts.append(vhost)
         if not found_vhosts:
             click.secho("[!] Domain %s is not found in apache config... exiting!" % domain, fg='red')
-            exit(1)
+            sys.exit(1)
         return found_vhosts
 
     def _parse_apache_config(self):
@@ -89,7 +90,7 @@ class Site(object):
             f.close()
         except:
             click.secho('[!] Unable to read apache config file /etc/apache2/conf/httpd.conf...exiting', fg='red')
-            exit(1)
+            sys.exit(1)
 
         data = filter( lambda i: re.search('^((?!#).)*$', i), data_all)
 
@@ -187,7 +188,7 @@ class Site(object):
         result,error  = subprocess.Popen(command, universal_newlines=True, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
         if error:
             click.secho('[!] An error has occured while rebuilding apache config, please fix the issue and try again: %s' % error, fg='red')
-            exit(1)
+            sys.exit(1)
         if DEBUG:
             click.secho('[D] %s' % result, fg='yellow')
         return
@@ -200,7 +201,7 @@ class Site(object):
         result,error  = subprocess.Popen(command, universal_newlines=True, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
         if error:
             click.secho('[!] An error has occured while reloading apache, please fix the issue and try again: %s' % error, fg='red')
-            exit(1)
+            sys.exit(1)
         if DEBUG:
             click.secho('[D] Apache service restarted successfully', fg='yellow')
         return
@@ -225,7 +226,7 @@ class Site(object):
                     click.secho('[D] Updating config file successded', fg='yellow')
             except:
                 click.secho('[!] An error occured. Unable to open file %s' % path, fg='red')
-                exit(1)
+                sys.exit(1)
             finally:
                 f.close()
         return
@@ -242,7 +243,7 @@ class Site(object):
                 click.secho('[D] Updating config file successded', fg='yellow')
         except:
             click.secho('[!] An error occured. Unable to open file %s' % path, fg='red')
-            exit(1)
+            sys.exit(1)
         finally:
             f.close()
         return
@@ -267,7 +268,7 @@ class Site(object):
         except:
             click.secho('[!] An error occured. Unable to write to file %s' % path, fg='red')
             raise
-            exit(1)
+            sys.exit(1)
         return   
         
     def _validate_ip_address(self, ip_address):
@@ -298,7 +299,7 @@ class Site(object):
         result,error  = subprocess.Popen(command, universal_newlines=True, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
         if error and 'Adding password' not in error:
             click.secho('[!] An error occured while trying to generate passwd file: %s' % error, fg='red')
-            exit(1)
+            sys.exit(1)
         if DEBUG:
             click.secho('[D] Created passwd file successfully', fg='yellow')
         return result
