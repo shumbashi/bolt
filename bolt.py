@@ -86,10 +86,10 @@ class Site(object):
         try:
             f = open("/etc/apache2/conf/httpd.conf", 'r')
             data_all = f.readlines()
+            f.close()
         except:
             click.secho('[!] Unable to read apache config file /etc/apache2/conf/httpd.conf...exiting', fg='red')
-        finally:
-            f.close()
+            exit(1)
 
         data = filter( lambda i: re.search('^((?!#).)*$', i), data_all)
 
@@ -103,7 +103,7 @@ class Site(object):
 
             # start of VirtualHost
             if "<VirtualHost" in out:
-                if not '*' in out:
+                if not '*' in out and not '::' in out:
                     ip_port = out.split()[1]
                     ip, port = ip_port.split(':')
                     port = port.replace('>', '')
