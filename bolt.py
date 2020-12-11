@@ -144,7 +144,7 @@ class Site(object):
         return parsed_vhosts
 
     def _check_status(self):
-        """ Function to check if there is a bolt.con file under the respective domain user data and then check if the file has the string 'Reuire valid-user' in it """
+        """ Function to check if there is a bolt.conf file under the respective domain user data and then check if the file has the string 'Reuire valid-user' in it """
         if DEBUG:
             click.secho('[+] Checking current status for %s' % self.domain, fg='green')
         locked = {}
@@ -181,7 +181,7 @@ class Site(object):
         return self.password
 
     def _rebuild_httpd_config(self):
-        """ Function to run rebuild http config command """
+        """ Function to run rebuild httpd config command """
         command = "/scripts/rebuildhttpdconf"
         if DEBUG:
             click.secho('[D] Attempting to rebuild httpd config', fg='yellow')
