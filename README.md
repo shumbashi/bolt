@@ -12,18 +12,11 @@ License:Apache License Version 2.0
 ## Installation
 
 To install or upgrade to the latest release on x86-64 Linux, run the following
-as root with `curl` and `jq` installed.
+from root's home directory.
 
 ```sh
-(
-  set -e
-  url=$(curl -fsSL https://api.github.com/repos/shumbashi/bolt/releases/latest |
-    jq -er '.assets[] | select(.name | startswith("bolt_v") and endswith("_linux_amd64")) | .browser_download_url')
-  tmp=$(mktemp)
-  trap 'rm -f "$tmp"' EXIT
-  curl -fL "$url" -o "$tmp"
-  install -m 0755 "$tmp" /usr/local/bin/bolt
-)
+curl -fL https://github.com/shumbashi/bolt/releases/latest/download/bolt_linux_amd64 -o bolt_linux_amd64 &&
+  install -m 0755 bolt_linux_amd64 /usr/local/bin/bolt
 ```
 
 ## Build a Linux binary
@@ -35,10 +28,9 @@ docker buildx build --platform linux/amd64 --output type=local,dest=dist .
 ```
 
 Set `__version__` in `bolt.py` when preparing a release. Use a version
-of the form `MAJOR.MINOR.PATCH`. The build exports
-`dist/bolt_v<VERSION>_linux_amd64` and verifies that the executable's
-`--version` output matches its filename.
-Copy that executable to `/usr/local/bin/bolt` on the target WHM server.
+of the form `MAJOR.MINOR.PATCH`. The build checks the executable's
+`--version` output and exports `dist/bolt_linux_amd64`. Attach that file
+to each GitHub release as `bolt_linux_amd64` so the installation link stays current.
 It bundles Python and its packages and targets x86-64 Linux with glibc 2.28
 or newer. Bolt still uses the server's cPanel scripts, Apache, systemctl,
 and htpasswd.
