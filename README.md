@@ -31,8 +31,10 @@ Set `__version__` in `bolt.py` when preparing a release. Use a version
 of the form `MAJOR.MINOR.PATCH`. The build checks the executable's
 `--version` output and exports `dist/bolt_linux_amd64`. Attach that file
 to each GitHub release as `bolt_linux_amd64` so the installation link stays current.
-It bundles Python and its packages and targets x86-64 Linux with glibc 2.28
-or newer. Bolt still uses the server's cPanel scripts, Apache, systemctl,
+It bundles Python and its packages and targets x86-64 Linux with glibc 2.17
+or newer. Before exporting, the build runs the same executable on CentOS 7
+and AlmaLinux 8 and 9 with a sample Apache configuration.
+Bolt still uses the server's cPanel scripts, Apache, systemctl,
 and htpasswd.
 
 Run this build as root. It extracts its bundled libraries under `/run/user/0`

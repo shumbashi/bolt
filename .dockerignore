@@ -2,3 +2,5 @@
 !bolt.py
 !LICENSE
 !requirements-build.txt
+!tests/
+!tests/check-binary.sh
