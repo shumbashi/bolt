@@ -11,11 +11,19 @@ License:Apache License Version 2.0
 
 ## Installation
 
-```
-cd ~
-wget https://github.com/shumbashi/bolt/releases/download/v1.2/bolt_v1.2_linux_amd64 -O bolt_v1.2_linux_amd64
-mv bolt_v1.2_linux_amd64 /usr/local/bin/bolt
-chmod +x /usr/local/bin/bolt
+To install or upgrade to the latest release on x86-64 Linux, run the following
+as root with `curl` and `jq` installed.
+
+```sh
+(
+  set -e
+  url=$(curl -fsSL https://api.github.com/repos/shumbashi/bolt/releases/latest |
+    jq -er '.assets[] | select(.name | startswith("bolt_v") and endswith("_linux_amd64")) | .browser_download_url')
+  tmp=$(mktemp)
+  trap 'rm -f "$tmp"' EXIT
+  curl -fL "$url" -o "$tmp"
+  install -m 0755 "$tmp" /usr/local/bin/bolt
+)
 ```
 
 ## Build a Linux binary
