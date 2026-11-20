@@ -1,7 +1,6 @@
 #!/usr/bin/python
 
 import click
-import re
 import os.path
 from jinja2 import Template
 import subprocess
@@ -10,7 +9,10 @@ import string
 import socket
 import sys
 
+__version__ = "1.3.0"
+
 @click.group()
+@click.version_option(__version__, prog_name="bolt")
 @click.option('--debug/--no-debug', default=False, help="Enable verbose output")
 def main(debug):
     """ Bolt is a command-line tool to help WHM system administrators quickly protect (lock) and un-protect (unlock) a Website public_html directory.
@@ -63,85 +65,48 @@ class Site(object):
         self.protocols = {'80': 'std', '443': 'ssl'}
         self.password = ''
         self.password_generated = False
-        self.parsed_vhosts = self._parse_apache_config()
-        self.found_vhosts = self._find_vhosts_for_domain()
+        self.found_vhosts = self._parse_apache_config()
         self.locking_status = self._check_status()
 
-    def _find_vhosts_for_domain(self):
-        """ Function to extract vhost informatino from parsed apache config file """
-        
-        domain = self.domain
-        vhosts = self.parsed_vhosts
-        found_vhosts = []
-        for vhost in vhosts:
-            if vhost['domain'] == domain:
-                found_vhosts.append(vhost)
-        if not found_vhosts:
-            click.secho("[!] Domain %s is not found in apache config... exiting!" % domain, fg='red')
-            sys.exit(1)
-        return found_vhosts
-
     def _parse_apache_config(self):
-        """ Function to read file '/etc/apache2/conf/httpd.d' and parse virtual hosts sections to extract fields """
-
+        """Collect the requested domain's virtual hosts while reading httpd.conf once."""
+        matches = []
+        port = None
         try:
-            f = open("/etc/apache2/conf/httpd.conf", 'r')
-            data_all = f.readlines()
-            f.close()
-        except:
+            with open("/etc/apache2/conf/httpd.conf", 'r') as config:
+                for line in config:
+                    if '#' in line:
+                        continue
+                    fields = line.split(None, 1)
+                    if not fields:
+                        continue
+                    directive = fields[0].lower()
+                    if directive == '<virtualhost' and len(fields) == 2:
+                        address = fields[1].split()[0].rstrip('>')
+                        port = address.rpartition(':')[2] if ':' in address else '*'
+                        servername = documentroot = None
+                    elif directive == '</virtualhost>':
+                        if port is not None and servername == self.domain and documentroot:
+                            matches.append({
+                                'domain': servername,
+                                'port': port,
+                                'username': documentroot.split('/')[2],
+                                'documentroot': documentroot,
+                            })
+                        port = None
+                    elif port is not None and len(fields) == 2:
+                        if directive == 'servername':
+                            servername = fields[1].split()[0]
+                        elif directive == 'documentroot':
+                            documentroot = fields[1].strip().strip('"')
+        except IOError:
             click.secho('[!] Unable to read apache config file /etc/apache2/conf/httpd.conf...exiting', fg='red')
             sys.exit(1)
 
-        data = filter( lambda i: re.search('^((?!#).)*$', i), data_all)
-
-        ID = 0
-        enable = False
-
-        result = {}
-        vhost = []
-        while len(data) > 0:
-            out = data.pop(0)
-
-            # start of VirtualHost
-            if "<VirtualHost" in out:
-                if not '*' in out and not '::' in out:
-                    ip_port = out.split()[1]
-                    ip, port = ip_port.split(':')
-                    port = port.replace('>', '')
-                else:
-                    ip = '*'
-                    port = '*'
-                vhost.append(ip)
-                vhost.append(port)
-                enable = True
-                continue
-
-            if "</VirtualHost>" in out:
-                result[ID] = vhost
-                ID+=1
-                enable = False
-                vhost = []
-                continue
-                    
-            if enable:
-                vhost.append(out)
-                continue
-        parsed_vhosts = []
-        for i in result:
-            # result[i][0] is an IP
-            # result[i][1] is a port
-            # another list items are lines in vhost, grep them all
-            for line in result[i]:
-                if "ServerName" in line:
-                    servername = line.split()[1]
-                    continue
-                if "DocumentRoot" in line:
-                    documentroot = line.split()[1]
-                    username = documentroot.split('/')[2]
-                    continue
-            port = result[i][1]
-            parsed_vhosts.append({'domain': servername, 'port': port, 'username': username, 'documentroot': documentroot})
-        return parsed_vhosts
+        if not matches:
+            click.secho("[!] Domain %s is not found in apache config... exiting!" % self.domain, fg='red')
+            sys.exit(1)
+        return matches
 
     def _check_status(self):
         """ Function to check if there is a bolt.conf file under the respective domain user data and then check if the file has the string 'Reuire valid-user' in it """
@@ -159,16 +124,10 @@ class Site(object):
                         click.secho('[D] File %s not found' % file, fg='yellow')
                     locked[protocol] = False
                 else: 
-                    f = open(file, 'r')
-                    data_all = f.readlines()
-                    f.close()
-                    data = filter( lambda i: re.search('^((?!#).)*$', i), data_all)
-                    locked[protocol] = False
-                    while len(data) > 0:
-                        out = data.pop(0)
-                        if 'Require valid-user' in out:
-                            locked[protocol] = True
-                            continue
+                    with open(file, 'r') as config:
+                        locked[protocol] = any(
+                            '#' not in line and 'Require valid-user' in line for line in config
+                        )
             except Exception as e:
                 raise e
         return locked
@@ -192,6 +151,10 @@ class Site(object):
         if DEBUG:
             click.secho('[D] %s' % result, fg='yellow')
         return
+
+    def _apply_apache_changes(self):
+        self._rebuild_httpd_config()
+        self._reload_apache()
 
     def _reload_apache(self):
         """ Function to reload apache service """
@@ -319,17 +282,19 @@ Require valid-user
         return generated_template
 
     def lock(self):
-        self.status()        
+        self.status()
+        changed = False
         for vhost in self.found_vhosts:
             vhost_protocol = self.protocols[vhost['port']]
             if self.locking_status[vhost_protocol] == False:
                 click.secho('[+] Locking %s on port %s' % (self.domain, vhost['port']), fg='green')
                 self._update_config_file(vhost['documentroot'],vhost_protocol,vhost['username'],vhost['domain'])
                 self._generate_password_file(vhost['documentroot'],vhost_protocol,vhost['username'],vhost['domain'])
-                self._rebuild_httpd_config()
-                self._reload_apache()
+                changed = True
             else:
                 click.secho('[+] Domain %s is already locked on port %s' % (self.domain, vhost['port']), fg='green')
+        if changed:
+            self._apply_apache_changes()
         if self.password_generated:
             click.secho('*************************************', fg='green')
             click.secho('[+] Username: %s' % vhost['username'], fg='green')
@@ -337,41 +302,46 @@ Require valid-user
             click.secho('*************************************', fg='green')
 
     def unlock(self):
+        changed = False
         for vhost in self.found_vhosts:
             vhost_protocol = self.protocols[vhost['port']]
             if self.locking_status[vhost_protocol] == True:
                 click.secho('[+] Unlocking %s on port %s' % (self.domain, vhost['port']), fg='green')
                 self._truncate_config_file(vhost['documentroot'],vhost_protocol,vhost['username'],vhost['domain'])
-                self._rebuild_httpd_config()
-                self._reload_apache()
+                changed = True
             else:
                 click.secho('[+] Domain %s is already unlocked on port %s' % (self.domain, vhost['port']), fg='green')
 
+        if changed:
+            self._apply_apache_changes()
+
     def status(self):
-        if self.locking_status['std'] or self.locking_status['ssl']:
+        if any(self.locking_status.values()):
             click.secho('[+] Domain %s is LOCKED' % self.domain, fg='blue')
             if DEBUG:
-                click.secho('[D] Domain %s locking status on std is %s' %(self.domain, self.locking_status['std']), fg='yellow')
-                click.secho('[D] Domain %s locking status on ssl is %s' %(self.domain, self.locking_status['ssl']), fg='yellow')
+                click.secho('[D] Domain %s locking status on std is %s' %(self.domain, self.locking_status.get('std', False)), fg='yellow')
+                click.secho('[D] Domain %s locking status on ssl is %s' %(self.domain, self.locking_status.get('ssl', False)), fg='yellow')
         else:
             click.secho('[+] Domain %s is UNLOCKED' % self.domain, fg='green')
             if DEBUG:
-                click.secho('[D] Domain %s locking status on std is %s' %(self.domain, self.locking_status['std']), fg='yellow')
-                click.secho('[D] Domain %s locking status on ssl is %s' %(self.domain, self.locking_status['ssl']), fg='yellow')            
+                click.secho('[D] Domain %s locking status on std is %s' %(self.domain, self.locking_status.get('std', False)), fg='yellow')
+                click.secho('[D] Domain %s locking status on ssl is %s' %(self.domain, self.locking_status.get('ssl', False)), fg='yellow')
         # click.echo('[+] Status of %s locking is %s' % (self.domain, self.locking_status))
     def whitelist(self):
         # Validate the provided string is a valid IP address
         if self._validate_ip_address(self.ip_address):
+            changed = False
             # Invoke _whitelist_ip function on Locked domains only
             for vhost in self.found_vhosts:
                 vhost_protocol = self.protocols[vhost['port']]
                 if self.locking_status[vhost_protocol] == True:
                     click.secho('[+] Whitelisting %s for %s on port %s' % (self.ip_address, self.domain, vhost['port']), fg='green')
                     self._whitelist_ip(vhost['documentroot'],vhost_protocol,vhost['username'],vhost['domain'],self.ip_address)
-                    self._rebuild_httpd_config()
-                    self._reload_apache()
+                    changed = True
                 else:
                     click.secho('[+] Domain %s is unlocked on port %s, cannot whitelist IP address for unlocked domain' % (self.domain, vhost['port']), fg='green')
+            if changed:
+                self._apply_apache_changes()
         else:
             click.secho("[!] Provided string '%s' is invalid IP Address" % self.ip_address, fg='red')
 

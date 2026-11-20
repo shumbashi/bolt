@@ -18,7 +18,31 @@ mv bolt_v1.2_linux_amd64 /usr/local/bin/bolt
 chmod +x /usr/local/bin/bolt
 ```
 
+## Build a Linux binary
+
+From the repository root, run this with Docker Buildx installed:
+
+```sh
+docker buildx build --platform linux/amd64 --output type=local,dest=dist .
+```
+
+Set `__version__` in `bolt.py` when preparing a release. Use a version
+of the form `MAJOR.MINOR.PATCH`. The build exports
+`dist/bolt_v<VERSION>_linux_amd64` and verifies that the executable's
+`--version` output matches its filename.
+Copy that executable to `/usr/local/bin/bolt` on the target WHM server.
+It bundles Python and its packages and targets x86-64 Linux with glibc 2.28
+or newer. Bolt still uses the server's cPanel scripts, Apache, systemctl,
+and htpasswd.
+
+Run this build as root. It extracts its bundled libraries under `/run/user/0`
+so it can start on hosts with a `noexec` temporary directory. The extraction
+location is set at build time and takes precedence over `TMPDIR`. It must be
+writable by root and on a filesystem that permits executable mappings.
+
 ## Usage
+
+Run `bolt --version` to check the installed release.
 
 ```
 [root@server]# bolt --help
@@ -43,6 +67,7 @@ Usage: bolt.py [OPTIONS] COMMAND [ARGS]...
   Documentation: https://github.com/shumbashi/bolt
 
 Options:
+  --version             Show the version and exit.
   --debug / --no-debug  Enable verbose output
   --help                Show this message and exit.
 
